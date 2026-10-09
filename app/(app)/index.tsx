@@ -92,6 +92,25 @@ return ( <SafeAreaView style={styles.safe}> <ScrollView
       </View>
     </Pressable>
 
+    <Text style={styles.sectionTitle}>
+      Mock Tests
+    </Text>
+
+    <Pressable
+      style={styles.mockCard}
+      onPress={() => router.push('/mock-tests')}
+      accessibilityRole="button"
+    >
+      <Text style={styles.liveIcon}>🧪</Text>
+      <View style={styles.liveTextContainer}>
+        <Text style={styles.mockTitle}>Proctored GATE Mocks</Text>
+        <Text style={styles.mockDescription}>
+          Mock tests for your department, exam times and published results.
+        </Text>
+      </View>
+      <Text style={styles.mockArrow}>›</Text>
+    </Pressable>
+
     <>        <Text style={styles.sectionTitle}>
           Quick Access
         </Text>
@@ -245,6 +264,34 @@ return ( <SafeAreaView style={styles.safe}> <ScrollView
 }
 
 const styles = StyleSheet.create({
+mockCard: {
+flexDirection: 'row',
+alignItems: 'center',
+gap: 14,
+backgroundColor: '#FFFFFF',
+borderRadius: 20,
+padding: 18,
+marginBottom: 8,
+borderWidth: 1,
+borderColor: '#DBEAFE',
+elevation: 2,
+},
+mockTitle: {
+fontSize: 17,
+fontWeight: '700',
+color: '#111827',
+},
+mockDescription: {
+fontSize: 14,
+color: '#6B7280',
+marginTop: 4,
+lineHeight: 20,
+},
+mockArrow: {
+fontSize: 28,
+color: '#2563EB',
+fontWeight: '600',
+},
 safe: {
 flex: 1,
 backgroundColor: '#F5F8FC',

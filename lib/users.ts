@@ -31,6 +31,10 @@ function mapUserDocument(uid: string, data: Record<string, unknown>): UserProfil
     email,
     role: data.role,
     createdAt: serializeCreatedAt(data.createdAt),
+    department: typeof data.department === 'string' ? data.department : undefined,
+    prn: typeof data.prn === 'string' ? data.prn : undefined,
+    batch: typeof data.batch === 'string' ? data.batch : undefined,
+    status: typeof data.status === 'string' ? data.status : undefined,
   };
 }
 

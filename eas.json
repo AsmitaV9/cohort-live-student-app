@@ -1,0 +1,51 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyD9iLNif29ktA_uVpOQ1thrToezJS8LOJM",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "cohort-live.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "cohort-live",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "cohort-live.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "245668416068",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:245668416068:web:e122731c053501ac324a11",
+        "EXPO_PUBLIC_PORTAL_URL": "https://cohortlive-portal.netlify.app"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyD9iLNif29ktA_uVpOQ1thrToezJS8LOJM",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "cohort-live.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "cohort-live",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "cohort-live.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "245668416068",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:245668416068:web:e122731c053501ac324a11",
+        "EXPO_PUBLIC_PORTAL_URL": "https://cohortlive-portal.netlify.app"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyD9iLNif29ktA_uVpOQ1thrToezJS8LOJM",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "cohort-live.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "cohort-live",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "cohort-live.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "245668416068",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:245668416068:web:e122731c053501ac324a11",
+        "EXPO_PUBLIC_PORTAL_URL": "https://cohortlive-portal.netlify.app"
+      }
+    }
+  },
+  "submit": {}
+}
