@@ -16,9 +16,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <SplashScreenController />
         <RootNavigator />
         <StatusBar style="auto" />
+        <SplashScreenController />
       </AuthProvider>
     </ThemeProvider>
   );

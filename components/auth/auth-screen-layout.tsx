@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type AuthScreenLayoutProps = {
   title: string;
@@ -19,7 +20,7 @@ type AuthScreenLayoutProps = {
 };
 
 export function AuthScreenLayout({ title, subtitle, children }: AuthScreenLayoutProps) {
-  const tint = useThemeColor({}, 'tint');
+  const scheme = useColorScheme();
 
   return (
     <ThemedView style={styles.screen}>
@@ -31,9 +32,19 @@ export function AuthScreenLayout({ title, subtitle, children }: AuthScreenLayout
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
-            <View style={styles.brand}>
-              <View style={[styles.mark, { backgroundColor: tint }]} />
-              <ThemedText type="subtitle">Cohort Live</ThemedText>
+            <View
+              style={styles.brand}
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel="CohortLive. Learn live. Test real.">
+              <Image
+                source={
+                  scheme === 'dark'
+                    ? require('@/assets/images/brand/logo-tagline-stacked-dark.png')
+                    : require('@/assets/images/brand/logo-tagline-stacked-light.png')
+                }
+                style={styles.logo}
+              />
             </View>
             <ThemedText type="title">{title}</ThemedText>
             <ThemedText style={styles.subtitle}>{subtitle}</ThemedText>
@@ -62,15 +73,13 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   brand: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
     marginBottom: 28,
   },
-  mark: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
+  // Stacked logo + tagline from the brand kit (157 × 140 at 1x).
+  logo: {
+    width: 135,
+    height: 120,
   },
   subtitle: {
     marginTop: 8,
