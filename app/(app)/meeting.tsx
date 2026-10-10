@@ -29,11 +29,14 @@ import {
 import { Track } from 'livekit-client';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase';
+import { PORTAL_URL } from '@/lib/mock-tests';
 
-const TOKEN_URL =
-  'https://cloud-api.livekit.io/api/sandbox/connection-details';
-
-const SANDBOX_ID = 'cohortlive-22hy4r';
+/**
+ * LiveKit access tokens come from the portal's livekit-token function, which checks the
+ * Firebase ID token and only admits students to a class that is live right now
+ * (replaces LiveKit's development token server).
+ */
+const TOKEN_URL = `${PORTAL_URL}/api/livekit-token`;
 
 type Session = {
   id: string;
@@ -52,35 +55,27 @@ type Quiz = {
   active: boolean;
 };
 
-async function getConnectionDetails(
-  roomName: string,
-  participantName: string,
-  participantIdentity: string
-) {
+async function getConnectionDetails(roomName: string, idToken: string) {
   const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
-      'X-Sandbox-ID': SANDBOX_ID,
+      Authorization: `Bearer ${idToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      room_name: roomName,
-      participant_identity: participantIdentity,
-      participant_name: participantName,
-    }),
+    body: JSON.stringify({ roomName }),
   });
 
   if (!response.ok) {
+    const body = await response.json().catch(() => null);
     throw new Error(
-      `LiveKit token server returned ${response.status}`
+      body?.error || `Could not get access to the live class (${response.status}).`
     );
   }
 
   const data = await response.json();
 
-  const url = data.serverUrl ?? data.server_url;
-  const token =
-    data.participantToken ?? data.participant_token;
+  const url = data.serverUrl;
+  const token = data.participantToken;
 
   if (!url || !token) {
     throw new Error(
@@ -218,20 +213,11 @@ export default function MeetingScreen() {
       setServerUrl(null);
 
       try {
-        const participantIdentity =
-          `student-${firebaseUser.uid}-${Date.now()}`;
-
-        const participantName =
-          profile?.name ||
-          firebaseUser.email ||
-          'Student';
-
-        const details =
-          await getConnectionDetails(
-            session.roomName,
-            participantName,
-            participantIdentity
-          );
+        // The function names the participant from the student's profile.
+        const details = await getConnectionDetails(
+          session.roomName,
+          await firebaseUser.getIdToken()
+        );
 
         if (cancelled) {
           return;
