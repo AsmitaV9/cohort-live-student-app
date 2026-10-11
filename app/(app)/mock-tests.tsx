@@ -17,15 +17,16 @@ import { router } from 'expo-router';
 import { useAuth } from '@/contexts/auth-context';
 import { getAuthErrorMessage } from '@/lib/firebase-errors';
 import {
+  dismissAnnouncement,
   examState,
   examUrl,
   fmtIst,
+  groupExams,
+  loadAnnouncements,
   loadMockExams,
-  loadMyResults,
   PORTAL_URL,
-  resultUrl,
+  type Announcement,
   type MockExam,
-  type MockResult,
 } from '@/lib/mock-tests';
 
 /**
@@ -36,7 +37,7 @@ import {
 export default function MockTestsScreen() {
   const { firebaseUser, profile, reloadProfile } = useAuth();
   const [exams, setExams] = useState<MockExam[] | null>(null);
-  const [results, setResults] = useState<MockResult[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,14 +51,14 @@ export default function MockTestsScreen() {
     }
     setError('');
     try {
-      const [e, r] = await Promise.all([loadMockExams(firebaseUser.uid, department), loadMyResults(firebaseUser.uid)]);
+      const e = await loadMockExams(firebaseUser.uid, department, profile?.batch);
       setExams(e);
-      setResults(r);
+      setAnnouncements(await loadAnnouncements(department, profile?.batch, new Set(e.map((x) => x.id))).catch(() => []));
     } catch (err) {
       setError(getAuthErrorMessage(err));
       setExams([]);
     }
-  }, [firebaseUser, ready, department]);
+  }, [firebaseUser, ready, department, profile?.batch]);
 
   useEffect(() => {
     load();
@@ -85,6 +86,48 @@ export default function MockTestsScreen() {
     );
   };
 
+  const groups = exams ? groupExams(exams) : null;
+  const total = groups ? groups.live.length + groups.upcoming.length + groups.completed.length : 0;
+
+  const card = (e: MockExam) => {
+    const s = examState(e);
+    return (
+      <View key={e.id} style={styles.card}>
+        <View style={styles.rowSpread}>
+          <Text style={[styles.cardTitle, { flex: 1 }]}>{e.title}</Text>
+          <View style={[styles.pill, pillTone[s.tone]]}>
+            <Text style={[styles.pillText, pillTextTone[s.tone]]}>{s.label}</Text>
+          </View>
+        </View>
+        <Text style={styles.fact}>Opens {fmtIst(e.windowStart)}</Text>
+        <Text style={styles.fact}>Closes {fmtIst(e.windowEnd)}</Text>
+        <Text style={styles.fact}>
+          {e.durationMin} min · {e.totalQuestions} questions · {e.totalMarks} marks
+        </Text>
+        <Text style={styles.muted}>{s.hint}</Text>
+        {s.canOpen && (
+          <Pressable style={styles.primaryBtn} onPress={() => openExam(e)} accessibilityRole="button">
+            <Text style={styles.primaryBtnText}>{e.attempt ? 'Resume on laptop' : 'Open exam link'}</Text>
+          </Pressable>
+        )}
+        {e.attempt && e.resultsPublished && (
+          <Pressable style={styles.ghostBtn} onPress={() => router.push('/my-results')} accessibilityRole="button">
+            <Text style={styles.ghostBtnText}>See my result</Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
+
+  const section = (title: string, items: MockExam[], empty: string) => (
+    <>
+      <Text style={styles.section}>
+        {title} <Text style={styles.count}>({items.length})</Text>
+      </Text>
+      {items.length === 0 ? <Text style={styles.muted}>{empty}</Text> : items.map(card)}
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
@@ -95,6 +138,30 @@ export default function MockTestsScreen() {
         <Text style={styles.subtitle}>
           Proctored GATE mocks{department ? ` for ${department}` : ''}. Times are in IST.
         </Text>
+
+        {announcements.map((a) => (
+          <View key={a.id} style={styles.announcement} accessibilityRole="alert">
+            <View style={{ flex: 1 }}>
+              <Text style={styles.announcementText}>📣 {a.text}</Text>
+              <Text style={styles.announcementMeta}>
+                {a.scope === 'exam' && a.examTitle ? `${a.examTitle} · ` : a.scope === 'department' ? `${a.department} · ` : ''}
+                {a.byName || 'Admin'}
+                {a.at ? ` · ${fmtIst(a.at)}` : ''}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                dismissAnnouncement(a.id);
+                setAnnouncements((l) => l.filter((x) => x.id !== a.id));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss announcement"
+              hitSlop={10}
+            >
+              <Text style={styles.dismiss}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
 
         <View style={styles.notice}>
           <Text style={styles.noticeIcon}>💻</Text>
@@ -110,7 +177,7 @@ export default function MockTestsScreen() {
             </Text>
             <Text style={styles.muted}>
               {!department || !profile.prn
-                ? 'Mock tests are set per department. Sign in once on the web portal with this account to add your department, PRN and a selfie. An admin then approves you.'
+                ? 'Mock tests are set per department. Sign in once on the web portal with this account to add your department, PRN and batch. An admin then approves you.'
                 : 'Your portal registration is with the admin. Pull down to refresh once you are approved.'}
             </Text>
             <Pressable style={styles.primaryBtn} onPress={() => open(`${PORTAL_URL}/student`)}>
@@ -122,81 +189,30 @@ export default function MockTestsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {ready && exams === null && <ActivityIndicator style={{ marginTop: 30 }} size="large" />}
 
-        {ready && exams && (
+        {ready && groups && total === 0 && (
+          <View style={[styles.card, { marginTop: 18 }]}>
+            <Text style={styles.cardTitle}>No mock tests yet</Text>
+            <Text style={styles.muted}>
+              Nothing is scheduled for {department}
+              {profile?.batch ? ` (batch ${profile.batch})` : ''} right now. Pull down to refresh.
+            </Text>
+          </View>
+        )}
+        {ready && groups && total > 0 && (
           <>
-            <Text style={styles.section}>Exams</Text>
-            {exams.length === 0 && (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>No mock tests yet</Text>
-                <Text style={styles.muted}>Nothing is scheduled for {department} right now. Pull down to refresh.</Text>
-              </View>
-            )}
-            {exams.map((e) => {
-              const s = examState(e);
-              return (
-                <View key={e.id} style={styles.card}>
-                  <View style={styles.rowSpread}>
-                    <Text style={[styles.cardTitle, { flex: 1 }]}>{e.title}</Text>
-                    <View style={[styles.pill, pillTone[s.tone]]}>
-                      <Text style={[styles.pillText, pillTextTone[s.tone]]}>{s.label}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.fact}>Opens {fmtIst(e.windowStart)}</Text>
-                  <Text style={styles.fact}>Closes {fmtIst(e.windowEnd)}</Text>
-                  <Text style={styles.fact}>
-                    {e.durationMin} min · {e.totalQuestions} questions · {e.totalMarks} marks
-                  </Text>
-                  <Text style={styles.muted}>{s.hint}</Text>
-                  {s.canOpen && (
-                    <Pressable style={styles.primaryBtn} onPress={() => openExam(e)} accessibilityRole="button">
-                      <Text style={styles.primaryBtnText}>{e.attempt ? 'Resume on laptop' : 'Open exam link'}</Text>
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-
-            <Text style={styles.section}>Results</Text>
-            {results.length === 0 && (
-              <View style={styles.card}>
-                <Text style={styles.muted}>Results appear here after the admin publishes them.</Text>
-              </View>
-            )}
-            {results.map((r) => (
-              <View key={r.examId} style={styles.card}>
-                <Text style={styles.cardTitle}>{r.examTitle}</Text>
-                <View style={styles.statRow}>
-                  <Stat label="Marks" value={`${r.total} / ${r.maxMarks}`} />
-                  <Stat label="Rank" value={r.rank ? `${r.rank} / ${r.candidates ?? '—'}` : '—'} />
-                  <Stat label="Percentile" value={r.percentile != null ? r.percentile.toFixed(1) : '—'} />
-                </View>
-                <Text style={[styles.resultLine, r.pass ? styles.pass : styles.fail]}>
-                  {r.pass ? 'Pass' : 'Fail'} · {r.percent.toFixed(1)}%
-                </Text>
-                <View style={styles.btnRow}>
-                  <Pressable style={styles.primaryBtn} onPress={() => open(resultUrl(r.examId, 'scorecard'))}>
-                    <Text style={styles.primaryBtnText}>PDF scorecard</Text>
-                  </Pressable>
-                  <Pressable style={styles.ghostBtn} onPress={() => open(resultUrl(r.examId))}>
-                    <Text style={styles.ghostBtnText}>Full result</Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.mutedSmall}>Opens the portal in your browser (sign in with this account).</Text>
-              </View>
-            ))}
+            {section('Live now', groups.live, 'No exam is open right now.')}
+            {section('Upcoming', groups.upcoming, 'Nothing else is scheduled yet.')}
+            {section('Completed', groups.completed, 'Exams you take appear here.')}
           </>
+        )}
+
+        {ready && (
+          <Pressable style={[styles.primaryBtn, { marginTop: 22 }]} onPress={() => router.push('/my-results')} accessibilityRole="button">
+            <Text style={styles.primaryBtnText}>My Results</Text>
+          </Pressable>
         )}
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
   );
 }
 
@@ -246,4 +262,9 @@ const styles = StyleSheet.create({
   resultLine: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   pass: { color: '#15803D' },
   fail: { color: '#DC2626' },
+  count: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
+  announcement: { flexDirection: 'row', gap: 10, backgroundColor: '#DBEAFE', borderLeftWidth: 4, borderLeftColor: '#1E40AF', borderRadius: 12, padding: 14, marginTop: 12, alignItems: 'flex-start' },
+  announcementText: { color: '#0F172A', fontSize: 14, lineHeight: 20 },
+  announcementMeta: { color: '#475569', fontSize: 12, marginTop: 4 },
+  dismiss: { color: '#1E40AF', fontSize: 18, fontWeight: '700', paddingHorizontal: 6 },
 });

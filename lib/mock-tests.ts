@@ -1,15 +1,29 @@
-import { collection, doc, getDoc, getDocs, query, Timestamp, where } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  collection,
+  collectionGroup,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
 
 import { requireDb } from '@/lib/firebase';
 
 /**
- * Proctored GATE mock tests live on the web portal (laptop + webcam). The app only
- * lists them for the student's department, opens them in the browser and shows
- * published results. Data model: cohort-live-trainer-web, CLAUDE.md section 8.
+ * Proctored GATE mock tests live on the web portal (laptop + webcam). The app lists them,
+ * opens them in the browser and shows published results. Data model and rules:
+ * cohort-live-trainer-web (CLAUDE.md section 8, DECISIONS.md 2026-10-11).
+ *
+ * Exam list (same as the portal): approved exams for the student's department + batch whose
+ * window hasn't ended (Upcoming / Live now), plus exams the student actually took (Completed).
+ * The Firestore rules accept only these queries, so nothing else reaches the phone.
  */
 export const PORTAL_URL = (process.env.EXPO_PUBLIC_PORTAL_URL || 'https://cohortlive-portal.netlify.app').replace(/\/$/, '');
-
-const VISIBLE = ['approved', 'ended', 'evaluated', 'results_published'];
 
 export type MockExam = {
   id: string;
@@ -20,7 +34,9 @@ export type MockExam = {
   totalQuestions: number;
   totalMarks: number;
   status: string;
+  resultsPublished: boolean;
   attempt?: string;
+  submittedAt?: number | null;
 };
 
 export type MockResult = {
@@ -34,33 +50,73 @@ export type MockResult = {
   percentile: number | null;
   pass: boolean;
   submittedAt: number | null;
+  hasParticipationCert: boolean;
+  hasRankCert: boolean;
 };
 
 const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : typeof t === 'number' ? t : 0);
+const DONE = ['submitted', 'auto_closed', 'terminated'];
 
-export async function loadMockExams(uid: string, department: string): Promise<MockExam[]> {
+/** Audience keys, same as examAudience()/studentAudience() in the portal. */
+export function studentAudience(department: string, batch?: string): string[] {
+  return batch ? [`${department}|*`, `${department}|${batch}`] : [`${department}|*`];
+}
+
+function toExam(id: string, e: Record<string, any>): MockExam {
+  return {
+    id,
+    title: String(e.title ?? 'Mock test'),
+    windowStart: ms(e.windowStart),
+    windowEnd: ms(e.windowEnd),
+    durationMin: Number(e.durationMin) || 0,
+    totalQuestions: Number(e.totalQuestions) || 0,
+    totalMarks: Number(e.totalMarks) || 0,
+    status: String(e.status),
+    resultsPublished: e.resultsPublished === true,
+  };
+}
+
+export async function loadMockExams(uid: string, department: string, batch?: string): Promise<MockExam[]> {
   const db = requireDb();
-  const snap = await getDocs(
-    query(collection(db, 'exams'), where('departments', 'array-contains', department), where('status', 'in', VISIBLE)),
-  );
-  const list = await Promise.all(
-    snap.docs.map(async (d) => {
-      const e = d.data();
-      const a = await getDoc(doc(db, 'exams', d.id, 'attempts', uid)).catch(() => null);
-      return {
-        id: d.id,
-        title: String(e.title ?? 'Mock test'),
-        windowStart: ms(e.windowStart),
-        windowEnd: ms(e.windowEnd),
-        durationMin: Number(e.durationMin) || 0,
-        totalQuestions: Number(e.totalQuestions) || 0,
-        totalMarks: Number(e.totalMarks) || 0,
-        status: String(e.status),
-        attempt: a?.exists() ? String(a.data().status) : undefined,
-      };
-    }),
-  );
-  return list.sort((a, b) => b.windowStart - a.windowStart);
+  const [open, mine] = await Promise.all([
+    getDocs(
+      query(
+        collection(db, 'exams'),
+        where('audience', 'array-contains-any', studentAudience(department, batch)),
+        where('status', '==', 'approved'),
+        where('windowEnd', '>', Timestamp.now()),
+      ),
+    ),
+    getDocs(query(collectionGroup(db, 'attempts'), where('uid', '==', uid))),
+  ]);
+  const byId = new Map<string, MockExam>();
+  open.docs.forEach((d) => byId.set(d.id, toExam(d.id, d.data())));
+  const attempts = mine.docs.map((d) => ({ examId: d.ref.parent.parent!.id, status: String(d.data().status ?? ''), submittedAt: ms(d.data().submittedAt) || null }));
+  const extra = await Promise.all(attempts.filter((a) => !byId.has(a.examId)).map((a) => getDoc(doc(db, 'exams', a.examId)).catch(() => null)));
+  extra.forEach((s) => s?.exists() && byId.set(s.id, toExam(s.id, s.data())));
+  for (const a of attempts) {
+    const e = byId.get(a.examId);
+    if (e) Object.assign(e, { attempt: a.status, submittedAt: a.submittedAt });
+  }
+  return [...byId.values()];
+}
+
+export type ExamGroups = { live: MockExam[]; upcoming: MockExam[]; completed: MockExam[] };
+
+export function groupExams(list: MockExam[], now = Date.now()): ExamGroups {
+  const g: ExamGroups = { live: [], upcoming: [], completed: [] };
+  for (const e of list) {
+    const open = e.status === 'approved' && now < e.windowEnd;
+    const done = !!e.attempt && DONE.includes(e.attempt);
+    if (done || !open) {
+      if (e.attempt) g.completed.push(e);
+    } else if (now < e.windowStart && !e.attempt) g.upcoming.push(e);
+    else g.live.push(e);
+  }
+  g.live.sort((a, b) => a.windowEnd - b.windowEnd);
+  g.upcoming.sort((a, b) => a.windowStart - b.windowStart);
+  g.completed.sort((a, b) => (b.submittedAt ?? b.windowStart) - (a.submittedAt ?? a.windowStart));
+  return g;
 }
 
 /** Only published results are readable (security rules), so this is exactly the student's released results. */
@@ -80,6 +136,8 @@ export async function loadMyResults(uid: string): Promise<MockResult[]> {
         percentile: r.percentile ?? null,
         pass: r.pass === true,
         submittedAt: ms(r.submittedAt) || null,
+        hasParticipationCert: !!r.certificates?.participation,
+        hasRankCert: !!r.certificates?.rank,
       };
     })
     .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
@@ -88,18 +146,57 @@ export async function loadMyResults(uid: string): Promise<MockResult[]> {
 export type ExamState = { label: string; tone: 'live' | 'upcoming' | 'done' | 'closed' | 'bad'; canOpen: boolean; hint: string };
 
 export function examState(e: MockExam, now = Date.now()): ExamState {
-  const done = e.attempt === 'submitted' || e.attempt === 'auto_closed' || e.attempt === 'terminated';
-  if (done && e.status === 'results_published') return { label: 'Result out', tone: 'done', canOpen: false, hint: 'See your result below.' };
-  if (e.attempt === 'terminated') return { label: 'Terminated', tone: 'bad', canOpen: false, hint: 'Ended by proctoring. Contact your proctor.' };
+  const done = !!e.attempt && DONE.includes(e.attempt);
+  if (e.attempt === 'terminated') return { label: 'Terminated', tone: 'bad', canOpen: false, hint: e.resultsPublished ? 'Results are published.' : 'Ended by proctoring. Contact your proctor.' };
+  if (done && e.resultsPublished) return { label: 'Result out', tone: 'done', canOpen: false, hint: 'See My Results.' };
   if (done) return { label: 'Submitted', tone: 'done', canOpen: false, hint: 'Results appear after the admin publishes them.' };
-  if (e.attempt === 'in_progress' || e.attempt === 'paused') return { label: 'In progress', tone: 'live', canOpen: true, hint: 'Resume on the laptop you started on.' };
-  if (e.status !== 'approved' || now >= e.windowEnd) return { label: 'Closed', tone: 'closed', canOpen: false, hint: 'The exam window has closed.' };
+  if (e.attempt === 'in_progress' || e.attempt === 'paused') {
+    return now < e.windowEnd && e.status === 'approved'
+      ? { label: 'In progress', tone: 'live', canOpen: true, hint: 'Resume on the laptop you started on.' }
+      : { label: 'Closed', tone: 'closed', canOpen: false, hint: 'The exam has closed; your saved answers will be evaluated.' };
+  }
   if (now < e.windowStart) return { label: 'Upcoming', tone: 'upcoming', canOpen: true, hint: 'Opens at the time shown.' };
   return { label: 'Live now', tone: 'live', canOpen: true, hint: 'Take it on a laptop with a webcam.' };
 }
 
-export const examUrl = (examId: string) => `${PORTAL_URL}/student/exam/${encodeURIComponent(examId)}`;
-export const resultUrl = (examId: string, download?: 'scorecard' | 'certificate') =>
+export type Announcement = { id: string; text: string; scope: string; examId?: string; examTitle?: string; department?: string; byName: string; at: number | null; expiresAt: number | null };
+
+/** Everyone / department / exam announcements for this student, newest first (rules check the same keys). */
+export async function loadAnnouncements(department: string, batch: string | undefined, examIds: Set<string>): Promise<Announcement[]> {
+  const snap = await getDocs(
+    query(
+      collection(requireDb(), 'announcements'),
+      where('audience', 'array-contains-any', ['all', ...studentAudience(department, batch)]),
+      orderBy('at', 'desc'),
+      limit(20),
+    ),
+  );
+  const dismissed = await getDismissed();
+  const now = Date.now();
+  return snap.docs
+    .map((d) => {
+      const a = d.data();
+      return { id: d.id, text: String(a.text ?? ''), scope: String(a.scope ?? ''), examId: a.examId, examTitle: a.examTitle, department: a.department, byName: String(a.byName ?? ''), at: ms(a.at) || null, expiresAt: ms(a.expiresAt) || null };
+    })
+    .filter((a) => !dismissed.includes(a.id) && (!a.expiresAt || a.expiresAt > now) && (a.scope !== 'exam' || (a.examId && examIds.has(a.examId))));
+}
+
+const DISMISSED_KEY = 'cl-dismissed-announcements';
+async function getDismissed(): Promise<string[]> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(DISMISSED_KEY)) || '[]');
+  } catch {
+    return [];
+  }
+}
+export async function dismissAnnouncement(id: string) {
+  const list = [...(await getDismissed()), id].slice(-200);
+  await AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify(list)).catch(() => undefined);
+}
+
+export const examUrl = (examId: string) => `${PORTAL_URL}/student/exams/${encodeURIComponent(examId)}/instructions`;
+export type ResultDownload = 'scorecard' | 'report' | 'answers' | 'certificate' | 'rank';
+export const resultUrl = (examId: string, download?: ResultDownload) =>
   `${PORTAL_URL}/student/results/${encodeURIComponent(examId)}${download ? `?download=${download}` : ''}`;
 
 /** All times in IST (CLAUDE.md 11). */

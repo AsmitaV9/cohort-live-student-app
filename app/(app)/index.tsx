@@ -111,6 +111,21 @@ return ( <SafeAreaView style={styles.safe}> <ScrollView
       <Text style={styles.mockArrow}>›</Text>
     </Pressable>
 
+    <Pressable
+      style={[styles.mockCard, { marginTop: 12 }]}
+      onPress={() => router.push('/my-results')}
+      accessibilityRole="button"
+    >
+      <Text style={styles.liveIcon}>🏅</Text>
+      <View style={styles.liveTextContainer}>
+        <Text style={styles.mockTitle}>My Results</Text>
+        <Text style={styles.mockDescription}>
+          Published scores, rank, answers, scorecards and certificates.
+        </Text>
+      </View>
+      <Text style={styles.mockArrow}>›</Text>
+    </Pressable>
+
     <>        <Text style={styles.sectionTitle}>
           Quick Access
         </Text>
