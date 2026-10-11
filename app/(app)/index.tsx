@@ -120,7 +120,7 @@ return ( <SafeAreaView style={styles.safe}> <ScrollView
       <View style={styles.liveTextContainer}>
         <Text style={styles.mockTitle}>My Results</Text>
         <Text style={styles.mockDescription}>
-          Published scores, rank, answers, scorecards and certificates.
+          Published scores, rank, answers, result reports and certificates.
         </Text>
       </View>
       <Text style={styles.mockArrow}>›</Text>

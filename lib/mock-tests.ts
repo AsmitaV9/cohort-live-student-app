@@ -50,8 +50,8 @@ export type MockResult = {
   percentile: number | null;
   pass: boolean;
   submittedAt: number | null;
-  hasParticipationCert: boolean;
-  hasRankCert: boolean;
+  /** One certificate per student: rank (top N) or participation; null if the attempt was terminated. */
+  certificate: 'rank' | 'participation' | null;
 };
 
 const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : typeof t === 'number' ? t : 0);
@@ -136,8 +136,7 @@ export async function loadMyResults(uid: string): Promise<MockResult[]> {
         percentile: r.percentile ?? null,
         pass: r.pass === true,
         submittedAt: ms(r.submittedAt) || null,
-        hasParticipationCert: !!r.certificates?.participation,
-        hasRankCert: !!r.certificates?.rank,
+        certificate: r.certificates?.rank ? ('rank' as const) : r.certificates?.participation ? ('participation' as const) : null,
       };
     })
     .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
@@ -195,7 +194,8 @@ export async function dismissAnnouncement(id: string) {
 }
 
 export const examUrl = (examId: string) => `${PORTAL_URL}/student/exams/${encodeURIComponent(examId)}/instructions`;
-export type ResultDownload = 'scorecard' | 'report' | 'answers' | 'certificate' | 'rank';
+/** The portal's three student downloads: Result Report, Answer Key & Solutions, Certificate. */
+export type ResultDownload = 'report' | 'answers' | 'certificate';
 export const resultUrl = (examId: string, download?: ResultDownload) =>
   `${PORTAL_URL}/student/results/${encodeURIComponent(examId)}${download ? `?download=${download}` : ''}`;
 
