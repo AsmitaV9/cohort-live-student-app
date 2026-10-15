@@ -35,6 +35,8 @@ export type MockExam = {
   totalMarks: number;
   status: string;
   resultsPublished: boolean;
+  /** The exam can be taken on a phone (portal exam setting "Allow phones", default off). */
+  allowPhones: boolean;
   attempt?: string;
   submittedAt?: number | null;
 };
@@ -73,6 +75,7 @@ function toExam(id: string, e: Record<string, any>): MockExam {
     totalMarks: Number(e.totalMarks) || 0,
     status: String(e.status),
     resultsPublished: e.resultsPublished === true,
+    allowPhones: e.allowPhones === true,
   };
 }
 
@@ -151,11 +154,11 @@ export function examState(e: MockExam, now = Date.now()): ExamState {
   if (done) return { label: 'Submitted', tone: 'done', canOpen: false, hint: 'Results appear after the admin publishes them.' };
   if (e.attempt === 'in_progress' || e.attempt === 'paused') {
     return now < e.windowEnd && e.status === 'approved'
-      ? { label: 'In progress', tone: 'live', canOpen: true, hint: 'Resume on the laptop you started on.' }
+      ? { label: 'In progress', tone: 'live', canOpen: true, hint: e.allowPhones ? 'Resume on the device you started on.' : 'Resume on the laptop you started on.' }
       : { label: 'Closed', tone: 'closed', canOpen: false, hint: 'The exam has closed; your saved answers will be evaluated.' };
   }
   if (now < e.windowStart) return { label: 'Upcoming', tone: 'upcoming', canOpen: true, hint: 'Opens at the time shown.' };
-  return { label: 'Live now', tone: 'live', canOpen: true, hint: 'Take it on a laptop with a webcam.' };
+  return { label: 'Live now', tone: 'live', canOpen: true, hint: e.allowPhones ? 'Take it on a laptop, or on this phone (this exam allows phones).' : 'Take it on a laptop with a webcam.' };
 }
 
 export type Announcement = { id: string; text: string; scope: string; examId?: string; examTitle?: string; department?: string; byName: string; at: number | null; expiresAt: number | null };
