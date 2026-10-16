@@ -55,7 +55,7 @@ export default function MockTestsScreen() {
     try {
       const e = await loadMockExams(firebaseUser.uid, department, profile?.batch);
       setExams(e);
-      setAnnouncements(await loadAnnouncements(department, profile?.batch, new Set(e.map((x) => x.id))).catch(() => []));
+      setAnnouncements(await loadAnnouncements(department, profile?.batch, new Set(e.map((x) => x.id)), firebaseUser.uid).catch(() => []));
     } catch (err) {
       setError(getAuthErrorMessage(err));
       setExams([]);
@@ -211,10 +211,15 @@ export default function MockTestsScreen() {
           <View style={[styles.card, { marginTop: 18 }]}>
             <Text style={styles.cardTitle}>No mock tests yet</Text>
             <Text style={styles.muted}>
-              Nothing is scheduled for {department}
-              {profile?.batch ? ` (batch ${profile.batch})` : ''} right now. Pull down to refresh.
+              Nothing is scheduled for you right now. Exams open to {department}
+              {profile?.batch ? ` (batch ${profile.batch})` : ''} and exams you joined with a link or code appear here. Pull down to refresh.
             </Text>
           </View>
+        )}
+        {ready && (
+          <Pressable style={[styles.secondaryBtn, { marginTop: 14 }]} onPress={() => open(`${PORTAL_URL}/student/join`)} accessibilityRole="button" accessibilityHint="Opens the portal in the browser">
+            <Text style={styles.secondaryBtnText}>Join an exam with a code</Text>
+          </Pressable>
         )}
         {ready && groups && total > 0 && (
           <>
@@ -268,6 +273,8 @@ const styles = StyleSheet.create({
   muted: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
   mutedSmall: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
   error: { color: '#DC2626', marginTop: 14, fontSize: 14 },
+  secondaryBtn: { borderWidth: 1, borderColor: '#2563EB', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' },
+  secondaryBtnText: { color: '#2563EB', fontWeight: '700' },
   primaryBtn: { backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', marginTop: 8 },
   primaryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   ghostBtn: { borderColor: '#2563EB', borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', marginTop: 8 },

@@ -59,9 +59,13 @@ export type MockResult = {
 const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : typeof t === 'number' ? t : 0);
 const DONE = ['submitted', 'auto_closed', 'terminated'];
 
-/** Audience keys, same as examAudience()/studentAudience() in the portal. */
-export function studentAudience(department: string, batch?: string): string[] {
-  return batch ? [`${department}|*`, `${department}|${batch}`] : [`${department}|*`];
+/**
+ * Audience keys, same as studentAudience() in the portal: department, batch, and the
+ * per-student key of exams that are "Only enrolled students" (enrolled via link, code or admin).
+ */
+export function studentAudience(department: string, batch?: string, uid?: string): string[] {
+  const keys = batch ? [`${department}|*`, `${department}|${batch}`] : [`${department}|*`];
+  return uid ? [...keys, `${department}|u:${uid}`] : keys;
 }
 
 function toExam(id: string, e: Record<string, any>): MockExam {
@@ -85,7 +89,7 @@ export async function loadMockExams(uid: string, department: string, batch?: str
     getDocs(
       query(
         collection(db, 'exams'),
-        where('audience', 'array-contains-any', studentAudience(department, batch)),
+        where('audience', 'array-contains-any', studentAudience(department, batch, uid)),
         where('status', '==', 'approved'),
         where('windowEnd', '>', Timestamp.now()),
       ),
@@ -96,7 +100,8 @@ export async function loadMockExams(uid: string, department: string, batch?: str
   open.docs.forEach((d) => byId.set(d.id, toExam(d.id, d.data())));
   const attempts = mine.docs.map((d) => ({ examId: d.ref.parent.parent!.id, status: String(d.data().status ?? ''), submittedAt: ms(d.data().submittedAt) || null }));
   const extra = await Promise.all(attempts.filter((a) => !byId.has(a.examId)).map((a) => getDoc(doc(db, 'exams', a.examId)).catch(() => null)));
-  extra.forEach((s) => s?.exists() && byId.set(s.id, toExam(s.id, s.data())));
+  // Archived exams are hidden from students (the portal does the same).
+  extra.forEach((s) => s?.exists() && s.data().archived !== true && byId.set(s.id, toExam(s.id, s.data())));
   for (const a of attempts) {
     const e = byId.get(a.examId);
     if (e) Object.assign(e, { attempt: a.status, submittedAt: a.submittedAt });
@@ -164,11 +169,11 @@ export function examState(e: MockExam, now = Date.now()): ExamState {
 export type Announcement = { id: string; text: string; scope: string; examId?: string; examTitle?: string; department?: string; byName: string; at: number | null; expiresAt: number | null };
 
 /** Everyone / department / exam announcements for this student, newest first (rules check the same keys). */
-export async function loadAnnouncements(department: string, batch: string | undefined, examIds: Set<string>): Promise<Announcement[]> {
+export async function loadAnnouncements(department: string, batch: string | undefined, examIds: Set<string>, uid?: string): Promise<Announcement[]> {
   const snap = await getDocs(
     query(
       collection(requireDb(), 'announcements'),
-      where('audience', 'array-contains-any', ['all', ...studentAudience(department, batch)]),
+      where('audience', 'array-contains-any', ['all', ...studentAudience(department, batch, uid)]),
       orderBy('at', 'desc'),
       limit(20),
     ),
